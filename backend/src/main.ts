@@ -64,9 +64,48 @@ app.post("/signup", async (req: Request, res: Response) => {
 
 app.get("/accounts/:accountId", async (req: Request, res: Response) => {
   const accountId = req.params.accountId;
-  // const account = accounts.find((account: any) => account.accountId === accountId);
   const [accountData] = await connection.query("select * from ccca.account where account_id = $1", [accountId]);
   res.json(accountData);
 });
+
+app.post('/deposit', async (req: Request, res: Response) => {
+  const input = req.body;
+  const accounts = await connection.query(`select account_id from ccca.account where account_id = '${input.accountId}'`);
+  if (!accounts?.length) {
+    return res.status(422).json({
+      error: 'Invalid account'
+    })
+  }
+  if (input.assetId !== 'USD' && input.assetId !== 'BTC') {
+    return res.status(422).json({
+      error: 'Invalid asset'
+    })
+  }
+  if (!input.quantity) {
+    return res.status(422).json({
+      error: 'Invalid quantity'
+    });
+  }
+  await connection.query('insert into ccca.account_asset (account_id, asset_id, quantity) values ($1, $2, $3)', [input.accountId, input.assetId, input.quantity])
+  return res.send()
+});
+
+
+app.post('/withdraw', async (req: Request, res: Response) => {
+  const input = req.body;
+  const [accountData] = await connection.query('select * from ccca.account where account_id = $1', [input.accountId]);
+  if (!accountData) return res.status(422).json({ error: 'Account does not exist' });
+  if (input.assetId !== 'BTC' && input.assetId !== 'USD') {
+    return res.status(422).json({ error: 'Invalid asset' });
+  }
+
+  const [accountAssetsData] = await connection.query('select * from ccca.account_asset where account_id = $1 and asset_id = $2', [input.accountId, input.assetId]);
+  const currentQuantity = parseFloat(accountAssetsData?.quantity)
+  console.log(accountAssetsData, currentQuantity)
+  if (!accountAssetsData || currentQuantity < input.quantity) {
+    return res.status(422).json({ error: "Insuficient funds" })
+  }
+  res.send();
+})
 
 app.listen(3000);
